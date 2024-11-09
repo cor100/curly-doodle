@@ -1,2 +1,1 @@
-# curly-doodle
-NLP in psychotherapy 
+Process-outcome analysis in therapeutic conversations using NLP
