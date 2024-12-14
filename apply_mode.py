@@ -31,7 +31,6 @@ for idx, row in texts.iterrows():
         scores = outputs.logits.squeeze().tolist()  # Get global scores
         global_scores.append(scores)
 
-# Add global scores to the dataset
 texts[["cultivating_change_talk", "softening_sustain_talk", "partnership", "empathy"]] = pd.DataFrame(global_scores)
 print(texts.head())
 texts.to_csv('./csvs/global_scores.csv', index=False)
