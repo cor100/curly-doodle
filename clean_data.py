@@ -60,7 +60,7 @@ def preprocess_text2(text):
     tokens = [token for token in tokens if token not in STOPWORDS and token.isalpha()]
 
     
-    # Optional: Join tokens back into a string (for models requiring raw text)
+    # Join tokens back into a string 
     processed_text = ' '.join(tokens)
     return processed_text
 
