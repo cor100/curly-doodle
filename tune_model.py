@@ -1,7 +1,7 @@
 import pandas as pd
+import pandas as pd
 import numpy as np
 import os
-import evaluate
 from datasets import Dataset
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
@@ -12,13 +12,16 @@ LABELS = 4
 
 df = pd.read_csv('./csvs/proccesed_annomi.csv')
 scores = pd.read_csv('./csvs/processed_global_scores.csv')
+texts = df.groupby('transcript_id').agg({
+    "utterance_text": lambda x: ' '.join(x)
+}).reset_index()
+print(texts.head())
 
-data = df.merge(scores, on="transcript_id", how="inner")
+data = texts.merge(scores, on="transcript_id", how="inner")
 print(data.head())
-
 # from huggingface_hub import notebook_login
 # notebook_login()
-login(token=os.getenv("HUGGINGFACETTOKEN"))
+# login(token=os.getenv("HUGGINGFACETTOKEN"))
 #### prepare dataset
 
 # from the hugging face website https://huggingface.co/blog/sentiment-analysis-python
@@ -61,7 +64,7 @@ def compute_metrics(eval_pred):
 
 
 training_args = TrainingArguments(
-   output_dir="./results2",
+   output_dir="./results",
    learning_rate=2e-5,
    per_device_train_batch_size=16,
    per_device_eval_batch_size=16,
@@ -75,7 +78,7 @@ trainer = Trainer(
    args=training_args,
    train_dataset=tokenized_train,
    eval_dataset=tokenized_test,
-   tokenizer=tokenizer, 
+   tokenizer=tokenizer,
    data_collator=data_collator,
    compute_metrics=compute_metrics,
 )

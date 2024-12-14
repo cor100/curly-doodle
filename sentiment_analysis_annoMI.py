@@ -1,76 +1,67 @@
 import pandas as pd
-import pandas as pd
 import numpy as np
 import os
+import evaluate
 from datasets import Dataset
 from sklearn.utils import shuffle
-from sklearn.model_selection import train_test_split
-from transformers import BertForSequenceClassification, DataCollatorWithPadding, AutoTokenizer, TrainingArguments, Trainer
+from transformers import DataCollatorWithPadding, AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments, Trainer
 from huggingface_hub import login
 
-LABELS = 4
-
-df = pd.read_csv('./csvs/proccesed_annomi.csv')
-scores = pd.read_csv('./csvs/processed_global_scores.csv')
-texts = df.groupby('transcript_id').agg({
-    "utterance_text": lambda x: ' '.join(x)
-}).reset_index()
-print(texts.head())
-
-data = texts.merge(scores, on="transcript_id", how="inner")
-print(data.head())
 # from huggingface_hub import notebook_login
 # notebook_login()
-# login(token=os.getenv("HUGGINGFACETTOKEN"))
-#### prepare dataset
+login(token=os.getenv("HUGGINGFACETTOKEN"))
+
+data_collator = DataCollatorWithPadding()
+df = pd.read_csv('processed_dataset_annoMI.csv')
 
 # from the hugging face website https://huggingface.co/blog/sentiment-analysis-python
-train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
-target_columns = ["cultivating_change_talk","partnership","softening_sustain_talk","empathy"]
-train_data["labels"] = train_data[target_columns].values.tolist()
-test_data["labels"] = test_data[target_columns].values.tolist()
-
+df_shuffled = shuffle(df, random_state=42)
+TRAIN_SIZE = 3000
+TEST_SIZE = 300
 
 #convert to use Hugging Face?
-train_dataset = Dataset.from_pandas(train_data)
-test_dataset = Dataset.from_pandas(test_data)
+small_train_dataset = df_shuffled.iloc[:TRAIN_SIZE]
+small_test_dataset = df_shuffled.iloc[TRAIN_SIZE:TRAIN_SIZE + TEST_SIZE]
+train_dataset = Dataset.from_pandas(small_train_dataset)
+test_dataset = Dataset.from_pandas(small_test_dataset)
 
+# tokenizer to use for Hugging Face models
 tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased")
+# num_labels: specifies the number of distinct labels that the model predicts
+model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=4)
+
+# speed up training: use a data_collator to convert training samples to PyTorch tensors
+# used in Trainer
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-print(train_dataset.column_names)
+
+def compute_metrics(eval_pred):
+    load_accuracy = evaluate.load("accuracy")
+    load_f1 = evaluate.load("f1")
+    
+    logits, labels = eval_pred
+    predictions = np.argmax(logits, axis=-1)
+    accuracy = load_accuracy.compute(predictions=predictions, references=labels)["accuracy"]
+    f1 = load_f1.compute(predictions=predictions, references=labels)["f1"]
+    return {"accuracy": accuracy, "f1": f1}
 
 def tokenize_function(text):
-    return tokenizer(text=text["utterance_text"], truncation=True, padding=True, max_length=512)
-# data['tokenized'] = data['utterance_text']
+    return tokenizer(text["processed_text"], truncation=True)
+    
+target_columns = ["cultivating_change_talk", "softening_sustain_talk", "partnership", "empathy"]
+
 tokenized_train = train_dataset.map(tokenize_function, batched=True)
 tokenized_test = test_dataset.map(tokenize_function, batched=True)
 
-### define model and tune
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels = LABELS)
-
-# Metric computation function
-def compute_metrics(eval_pred):
-    predictions, labels = eval_pred
-    mse = ((predictions - labels) ** 2).mean(axis=0)  # Mean Squared Error
-    mae = np.abs(predictions - labels).mean(axis=0)  # Mean Absolute Error
-    baseline_mse = ((labels - labels.mean(axis=0)) ** 2).mean()
-
-    return {
-        "mse": mse.mean(),  # Average across all target columns
-        "mae": mae.mean(),
-        "Baseline MSE": baseline_mse
-    }
-
-
-
+repo_name = "finetuning-sentiment-model-3000-samples"
 training_args = TrainingArguments(
-   output_dir="./results",
+   output_dir=repo_name,
    learning_rate=2e-5,
    per_device_train_batch_size=16,
    per_device_eval_batch_size=16,
    num_train_epochs=2,
    weight_decay=0.01,
    save_strategy="epoch",
+   push_to_hub=True,
 )
 
 trainer = Trainer(
@@ -78,14 +69,10 @@ trainer = Trainer(
    args=training_args,
    train_dataset=tokenized_train,
    eval_dataset=tokenized_test,
-   tokenizer=tokenizer,
+   tokenizer=tokenizer, 
    data_collator=data_collator,
    compute_metrics=compute_metrics,
 )
 
 trainer.train()
-
-trainer.save_model("./finetuned_global_scores_model")
-
-results = trainer.evaluate()
-print(results)
+trainer.evaluate()

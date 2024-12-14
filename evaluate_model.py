@@ -5,8 +5,7 @@ import pandas as pd
 import numpy as np
 
 
-
-# Reload your fine-tuned model
+# load in model
 model = AutoModelForSequenceClassification.from_pretrained("./finetuned_global_scores_model")
 df = pd.read_csv('./csvs/proccesed_annomi.csv')
 scores = pd.read_csv('./csvs/processed_global_scores.csv')
